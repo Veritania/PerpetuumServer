@@ -1241,7 +1241,11 @@ namespace Perpetuum.Zones.PBS
 #endif
             data.Add(k.message, (int)pbsEventType);
             data.Add(k.source, sourceDict);
-            data[k.zoneID] = zone.Id; //zoneid legyen mindig.
+            // Danger: client quirk?
+            // the comment below translates to "zoneid should always be." 
+            // BUT if we sent a zoneid the client doesn't seem to process it?
+            // So, we always send NULL because otherwise an exception is thrown and the transactions to clear the PBS are halted.
+            data[k.zoneID] = null; //zoneid legyen mindig.
             return data;
         }
         
