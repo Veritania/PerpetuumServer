@@ -39,16 +39,15 @@ namespace Perpetuum.Zones.PBS
             _pbsUnit.OptionalProperties.Add(_constructionLevelCurrent);
 
             _saver = new PBSObjectSaver<T>(Entity.Repository, TimeSpan.FromMinutes(15));
-            NodeUpdateCancellationToken = new CancellationTokenSource();
         }
 
         private void _pbsUnit_Dead(Unit arg1, Unit arg2)
         {
-            NodeUpdateCancellationToken.Cancel();
+            _pbsUnit.DamageTaken -= OnUnitDamageTaken;
+            _pbsUnit.Dead -= _pbsUnit_Dead;
         }
 
         private int _damageTaken;
-        CancellationTokenSource NodeUpdateCancellationToken { get; set; }
 
         private void OnUnitDamageTaken(Unit unit, Unit attacker, DamageTakenEventArgs e)
         {
@@ -57,13 +56,16 @@ namespace Perpetuum.Zones.PBS
             if (Interlocked.CompareExchange(ref _damageTaken, 1, 0) == 1)
                 return;
 
-            Logger.Info($"PBS node attacked ({_pbsUnit.Eid}) attacker: {attacker.InfoString}");
+            Logger.DebugInfo($"PBS node attacked ({_pbsUnit.Eid}) attacker: {attacker.InfoString}");
 
-            Task.Delay(TimeSpan.FromSeconds(30), NodeUpdateCancellationToken.Token).ContinueWith(t =>
+            Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(t =>
             {
                 try
                 {
-                    _pbsUnit.SendNodeUpdate(PBSEventType.nodeAttacked);
+                    if (_pbsUnit.Armor > 0)
+                    {
+                        _pbsUnit.SendNodeUpdate(PBSEventType.nodeAttacked);
+                    }
                 }
                 finally
                 {

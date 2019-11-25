@@ -231,9 +231,6 @@ namespace Perpetuum.Zones.PBS.DockingBases
             PBSHelper.SendPBSDockingBaseDeleteToProduction(Eid);
 
             base.OnRemovedFromZone(zone);
-
-            //NO delete from db, reparent to trash
-            PBSHelper.DeletePBSDockingBase(zone, this);
         }
 
         protected override void OnDead(Unit killer)

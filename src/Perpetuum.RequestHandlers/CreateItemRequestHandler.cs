@@ -23,7 +23,7 @@ namespace Perpetuum.RequestHandlers
             {
                 var character = request.Session.Character;
                 var targetContainer = GetTargetContainer(request);
-                //character.IsInTraining().ThrowIfEqual(false, ErrorCodes.AccessDenied);
+                character.IsInTraining().ThrowIfEqual(false, ErrorCodes.AccessDenied);
                 var item = CreateItem(request).ThrowIfNull(ErrorCodes.WTFErrorMedicalAttentionSuggested);
                 item.Owner = character.Eid;
 
