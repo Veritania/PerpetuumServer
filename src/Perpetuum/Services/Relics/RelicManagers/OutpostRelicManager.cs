@@ -82,8 +82,10 @@ namespace Perpetuum.Services.Relics
                 return Zone.IsWalkable(new Point(x, y));
             }
             PathFinder pathFinder = new AStarFinder(Heuristic.None, passableHandler);
-            Position outpostPosition = _outpost.CurrentPosition;
+            var outpostPostFinder = new ClosestWalkablePositionFinder(_zone, _outpost.CurrentPosition);
             Position invalidPoint = new Position(0, 0);
+            Position outpostPosition;
+            outpostPostFinder.Find(out outpostPosition);
 
             Point[] result = null;
             var attemptCount = 0;
@@ -96,7 +98,7 @@ namespace Perpetuum.Services.Relics
 
                 if (!foundValidLocation)
                 {
-                    Logger.Info("Invalid location!");
+                    Logger.Warning("Invalid location!");
                     return p;
                 }
 
@@ -110,7 +112,7 @@ namespace Perpetuum.Services.Relics
 
             if (result == null)
             {
-                Logger.Info("Invalid location!");
+                Logger.Warning("Invalid location!");
                 p = invalidPoint;
             }
 
