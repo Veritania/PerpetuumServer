@@ -31,6 +31,10 @@ namespace Perpetuum.Zones.Locking
             {
                 Error = ErrorCodes.TargetOutOfRange;
             }
+            else if (!unitLock.Owner.IsVisible(unitLock.Target))
+            {
+                Error = ErrorCodes.TargetOutOfRange;
+            }
         }
 
         public override void VisitTerrainLock(TerrainLock terrainLock)

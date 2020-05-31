@@ -353,14 +353,6 @@ namespace Perpetuum.Robots
             }
         }
 
-        protected override bool IsDetected(Unit target)
-        {
-            if (_lockHandler.IsLocked(target))
-                return true;
-
-            return base.IsDetected(target);
-        }
-
         public override double Volume
         {
             get
