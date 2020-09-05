@@ -124,6 +124,39 @@ namespace Perpetuum.Zones
             return null;
         }
 
+        [CanBeNull]
+        public static List<Point> FindWalkablePath(this IZone zone, Point startPosition, Point searchPosition, Area area, double slope = 4.0)
+        {
+            var q = new Queue<Point>();
+            q.Enqueue(startPosition);
+            var closed = new HashSet<Point> { startPosition };
+
+            var result = new List<Point>();
+            while (q.TryDequeue(out Point position))
+            {
+                result.Add(position);
+
+                if (position == searchPosition)
+                {
+                    return result;
+                }
+
+                foreach (var np in position.GetNonDiagonalNeighbours())
+                {
+                    if (closed.Contains(np))
+                        continue;
+
+                    closed.Add(np);
+
+                    if (!area.Contains(np) || !zone.IsWalkable(np, slope))
+                        continue;
+
+                    q.Enqueue(np);
+                }
+            }
+            return null;
+        }
+
         public static bool IsTerrainConditionsMatchInRange(this IZone zone, Position centerPosition, int range, double slope)
         {
             var totalTiles = range * range * 4;

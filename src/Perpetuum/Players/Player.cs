@@ -69,7 +69,7 @@ namespace Perpetuum.Players
 
             elapsed = elapsed.Min(_maxElapsedTime);
 
-            var angle = _player.Direction * Math.PI * 2;
+            var angle = _player.Direction * MathHelper.PI2;
             var vx = Math.Sin(angle) * speed;
             var vy = Math.Cos(angle) * speed;
 
@@ -88,10 +88,10 @@ namespace Perpetuum.Players
                 var nx = px + (vx * time.TotalSeconds);
                 var ny = py - (vy * time.TotalSeconds);
 
-                var dx = Math.Abs((int)px - (int)nx);
-                var dy = Math.Abs((int)py - (int)ny);
+                var dx = (int)px - (int)nx;
+                var dy = (int)py - (int)ny;
 
-                if (dx >= 1.0 || dy >= 1.0)
+                if (dx != 0 || dy != 0)
                 {
                     // csak akkor kell ha csempevaltas volt
                     if (!_player.IsWalkable((int)nx, (int)ny))

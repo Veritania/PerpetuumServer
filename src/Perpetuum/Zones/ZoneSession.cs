@@ -19,6 +19,7 @@ using Perpetuum.Items.Ammos;
 using Perpetuum.Log;
 using Perpetuum.Modules;
 using Perpetuum.Network;
+using Perpetuum.PathFinders;
 using Perpetuum.Players;
 using Perpetuum.Reactive;
 using Perpetuum.Robots;
@@ -47,6 +48,7 @@ namespace Perpetuum.Zones
         private Player _player;
         public DateTime DisconnectTime { get; private set; }
         private DateTime _lastReceivedPacketTime;
+        private PlayerMoveChecker _movementChecker;
 
         public int Id { get; set; }
 
@@ -205,6 +207,8 @@ namespace Perpetuum.Zones
 
             if (cancelLogout)
                 CancelLogout(true);
+
+            _movementChecker.PreviousTime = _lastReceivedPacketTime.ToUniversalTime();
         }
 
         private void WriteFQLog(string message)
@@ -282,6 +286,7 @@ namespace Perpetuum.Zones
             player.ApplyInvulnerableEffect();
 
             _player = player;
+            _movementChecker = new PlayerMoveChecker(_player);
         }
 
         private void OnWeatherUpdated(Packet weatherUpdatePacket)
@@ -297,6 +302,76 @@ namespace Perpetuum.Zones
             return new TerrainUpdateNotifier(_zone,player,layerTypes);
         }
 
+        private class PlayerMoveChecker
+        {
+            private Position _prev;
+            public Position Previous
+            {
+                get { return _prev; }
+                set
+                {
+                    _prev = value;
+                    PreviousTime = DateTime.UtcNow;
+                }
+            }
+            public DateTime PreviousTime { get; set; }
+            private readonly Player _player;
+
+            public PlayerMoveChecker(Player player)
+            {
+                _player = player;
+            }
+            public bool IsUpdateValid(Position pos)
+            {
+                if (Previous == Position.Empty)
+                {
+                    Previous = pos;
+                    return true;
+                }
+
+                var dx = Math.Abs(Previous.intX - pos.intX);
+                var dy = Math.Abs(Previous.intY - pos.intY);
+
+                if (dx < 2 && dy < 2)
+                {
+                    Previous = pos;
+                    return true;
+                }
+
+                var currentTime = DateTime.UtcNow;
+                var timeDelta = currentTime - PreviousTime;
+                var speed = _player.SpeedMax;
+                var maxDist = speed * timeDelta.TotalSeconds + 1;
+
+                Logger.DebugInfo($"MAX DIST: {maxDist} = {speed} * {timeDelta.TotalSeconds}");
+
+                var stopwatch = Stopwatch.StartNew();
+                var searchArea = new Area(pos.intX, pos.intY, Previous.intX, Previous.intY).AddBorder(2);
+                var pathBFS = _player.Zone.FindWalkablePath(pos, Previous, searchArea, _player.Slope);
+                stopwatch.Stop();
+                Logger.DebugInfo($"BFS SOLVE TIME: {stopwatch.Elapsed.TotalMilliseconds}");
+                //if (pathBFS != null)
+                //{
+                //    foreach(var p in pathBFS)
+                //        _player.Zone.CreateAlignedDebugBeam(BeamType.blue_10sec, p.ToPosition());
+                //}
+                //return pathBFS != null;
+                stopwatch = Stopwatch.StartNew();
+                var pathTest = new AStarLimited(Heuristic.Manhattan, _player.IsWalkable, (int)maxDist);
+                //pathTest.RegisterDebugHandler((node, type) =>
+                //{
+                //    var beamType = BeamType.blue_10sec;
+                //    if (PathFinderNodeType.Path == type)
+                //        beamType = BeamType.red_10sec;
+                //    _player.Zone.CreateAlignedDebugBeam(beamType, node.Location.ToPosition());
+                //});
+                var path = pathTest.FindPath(Previous.ToPoint(), pos.ToPoint());
+                stopwatch.Stop();
+                Logger.DebugInfo($"A* SOLVE TIME: {stopwatch.Elapsed.TotalMilliseconds}");
+                return path != null;
+            }
+        }
+
         private void HandleClientUpdate(Packet packet)
         {
             var player = _player;
@@ -307,10 +382,22 @@ namespace Perpetuum.Zones
             var position = packet.ReadPosition();
             var speed = (float)packet.ReadByte() / 255;
             var direction = (float)packet.ReadByte() / 255;
+            Logger.DebugInfo($"{player.CurrentPosition} -> {position}");
 
             if ( !player.IsWalkable(position) )
                 throw new PerpetuumException(ErrorCodes.InvalidMovement);
 
+            var stopwatch = Stopwatch.StartNew();
+            var test = _movementChecker.IsUpdateValid(position);
+            stopwatch.Stop();
+            Logger.DebugInfo($"{stopwatch.Elapsed.TotalMilliseconds}");
+            if (!test)
+            {
+                player.CurrentPosition = _movementChecker.Previous;
+                throw new PerpetuumException(ErrorCodes.InvalidMovement);
+            }
+                
+            _movementChecker.Previous = player.CurrentPosition;
             player.CurrentPosition = position;
             player.CurrentSpeed = speed;
             player.Direction = direction;
