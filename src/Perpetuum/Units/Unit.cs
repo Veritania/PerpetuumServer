@@ -258,12 +258,15 @@ namespace Perpetuum.Units
             get { return CurrentPosition.AddToZ(Height); }
         }
 
+        public virtual void OnPositionUpdated(Position last) { }
+
         public Position CurrentPosition
         {
             get { return _currentPosition; }
             set
             {
                 var lastPosition = _currentPosition;
+                OnPositionUpdated(lastPosition);
 
                 _currentPosition = Zone.FixZ(value);
 

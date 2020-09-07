@@ -8,44 +8,43 @@ namespace Perpetuum.PathFinders
 {
     public class AStarLimited : AStarFinder
     {
-        private readonly int MAX;
-        public AStarLimited(Heuristic heuristic, PathFinderNodePassableHandler passableHandler, int maxLength) : base(heuristic, passableHandler)
+        private readonly int MAX_PQ_SIZE;
+        public AStarLimited(Heuristic heuristic, PathFinderNodePassableHandler passableHandler, int max) : base(heuristic, passableHandler)
         {
-            MAX = maxLength;
+            MAX_PQ_SIZE = max * max + 1;
         }
 
-        public override Point[] FindPath(Point start, Point end, CancellationToken cancellationToken)
+        public bool HasPath(Point start, Point end, int maxDepth)
         {
             if (!_passableHandler(end.X, end.Y))
-                return null;
+                return false;
 
             if (start == end)
-                return EmptyPath;
+                return true;
 
-            var openList = new PriorityQueue<Node>(MAX*MAX+1);
-            var closedList = new Dictionary<int, bool>();
+            var openList = new PriorityQueue<Node>(MAX_PQ_SIZE);
+            var visited = new HashSet<int>();
 
             var startNode = new Node(start.X, start.Y);
             openList.Enqueue(startNode);
-            closedList[startNode.GetHashCode()] = true;
+            visited.Add(startNode.GetHashCode());
 
-            while (openList.TryDequeue(out Node node) && !cancellationToken.IsCancellationRequested)
+            while (openList.TryDequeue(out Node node))
             {
-                if (!OnProcessNode(node))
-                    break;
-
                 if (node.Location == end)
-                    return Backtrace(node);
+                    return true;
 
-                if (node.depth > MAX)
-                    return null;
+                if (node.depth > maxDepth)
+                    return false;
 
                 foreach (var neighbor in GetNeighbors(node))
                 {
-                    if (closedList.ContainsKey(neighbor.GetHashCode()))
+                    var neighborHash = neighbor.GetHashCode();
+                    if (visited.Contains(neighborHash))
                         continue;
 
-                    closedList[neighbor.GetHashCode()] = true;
+                    if (neighbor.Location == end)
+                        return true;
 
                     var newG = node.g + (int)(Weight * (neighbor.Location.X - node.Location.X == 0 || neighbor.Location.Y - node.Location.Y == 0 ? 1 : SQRT2));
                     var newH = _heuristic.Calculate(neighbor.Location.X, neighbor.Location.Y, end.X, end.Y) * Weight;
@@ -55,11 +54,11 @@ namespace Perpetuum.PathFinders
                     neighbor.parent = node;
                     neighbor.depth = node.depth + 1;
 
+                    visited.Add(neighborHash);
                     openList.Enqueue(neighbor);
-                    OnPathFinderDebug(neighbor, PathFinderNodeType.Open);
                 }
             }
-            return null;
+            return false;
         }
     }
 

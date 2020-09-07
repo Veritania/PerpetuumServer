@@ -207,8 +207,6 @@ namespace Perpetuum.Zones
 
             if (cancelLogout)
                 CancelLogout(true);
-
-            _movementChecker.PreviousTime = _lastReceivedPacketTime.ToUniversalTime();
         }
 
         private void WriteFQLog(string message)
@@ -305,71 +303,56 @@ namespace Perpetuum.Zones
         private class PlayerMoveChecker
         {
             private Position _prev;
-            public Position Previous
+            private readonly object _lock = new object();
+            public Position GetPrev()
             {
-                get { return _prev; }
-                set
-                {
-                    _prev = value;
-                    PreviousTime = DateTime.UtcNow;
-                }
+                lock (_lock)
+                    return _prev;
             }
-            public DateTime PreviousTime { get; set; }
+            public void SetPrev(Position prev)
+            {
+                lock (_lock)
+                    _prev = prev;
+            }
             private readonly Player _player;
+            private readonly AStarLimited _aStar;
+            private const int MAX_DIST = 10;
 
             public PlayerMoveChecker(Player player)
             {
                 _player = player;
+                _aStar = new AStarLimited(Heuristic.Manhattan, _player.IsWalkable, MAX_DIST);
+                SetPrev(player.CurrentPosition);
             }
+
             public bool IsUpdateValid(Position pos)
             {
-                if (Previous == Position.Empty)
-                {
-                    Previous = pos;
-                    return true;
-                }
-
-                var dx = Math.Abs(Previous.intX - pos.intX);
-                var dy = Math.Abs(Previous.intY - pos.intY);
-
+                var prev = GetPrev();
+                var dx = Math.Abs(prev.intX - pos.intX);
+                var dy = Math.Abs(prev.intY - pos.intY);
                 if (dx < 2 && dy < 2)
                 {
-                    Previous = pos;
                     return true;
                 }
-
-                var currentTime = DateTime.UtcNow;
-                var timeDelta = currentTime - PreviousTime;
-                var speed = _player.SpeedMax;
-                var maxDist = speed * timeDelta.TotalSeconds + 1;
-
-                Logger.DebugInfo($"MAX DIST: {maxDist} = {speed} * {timeDelta.TotalSeconds}");
-
-                var stopwatch = Stopwatch.StartNew();
-                var searchArea = new Area(pos.intX, pos.intY, Previous.intX, Previous.intY).AddBorder(2);
-                var pathBFS = _player.Zone.FindWalkablePath(pos, Previous, searchArea, _player.Slope);
-                stopwatch.Stop();
-                Logger.DebugInfo($"BFS SOLVE TIME: {stopwatch.Elapsed.TotalMilliseconds}");
-                //if (pathBFS != null)
-                //{
-                //    foreach(var p in pathBFS)
-                //        _player.Zone.CreateAlignedDebugBeam(BeamType.blue_10sec, p.ToPosition());
-                //}
-                //return pathBFS != null;
-                stopwatch = Stopwatch.StartNew();
-                var pathTest = new AStarLimited(Heuristic.Manhattan, _player.IsWalkable, (int)maxDist);
-                //pathTest.RegisterDebugHandler((node, type) =>
-                //{
-                //    var beamType = BeamType.blue_10sec;
-                //    if (PathFinderNodeType.Path == type)
-                //        beamType = BeamType.red_10sec;
-                //    _player.Zone.CreateAlignedDebugBeam(beamType, node.Location.ToPosition());
-                //});
-                var path = pathTest.FindPath(Previous.ToPoint(), pos.ToPoint());
-                stopwatch.Stop();
-                Logger.DebugInfo($"A* SOLVE TIME: {stopwatch.Elapsed.TotalMilliseconds}");
-                return path != null;
+                else if (dx > MAX_DIST || dy > MAX_DIST)
+                {
+                    return false;
+                }
+                else if (_player.Zone.CheckLinearPath(prev, pos, _player.Slope))
+                {
+                    return true;
+                }
+                if (_aStar.HasPath(prev.ToPoint(), pos.ToPoint(), (int)MAX_DIST))
+                {
+                    return true;
+                }
+                return false;
             }
+        }
+
+        public void SetLastPosition(Position last)
+        {
+            _movementChecker.SetPrev(last);
         }
 
         private void HandleClientUpdate(Packet packet)
@@ -382,22 +365,18 @@ namespace Perpetuum.Zones
             var position = packet.ReadPosition();
             var speed = (float)packet.ReadByte() / 255;
             var direction = (float)packet.ReadByte() / 255;
-            Logger.DebugInfo($"{player.CurrentPosition} -> {position}");
 
-            if ( !player.IsWalkable(position) )
+            if (!player.IsWalkable(position))
                 throw new PerpetuumException(ErrorCodes.InvalidMovement);
 
-            var stopwatch = Stopwatch.StartNew();
-            var test = _movementChecker.IsUpdateValid(position);
-            stopwatch.Stop();
-            Logger.DebugInfo($"{stopwatch.Elapsed.TotalMilliseconds}");
-            if (!test)
+            var valid = _movementChecker.IsUpdateValid(position);
+            if (!valid)
             {
-                player.CurrentPosition = _movementChecker.Previous;
+                player.CurrentPosition = _movementChecker.GetPrev();
                 throw new PerpetuumException(ErrorCodes.InvalidMovement);
             }
-                
-            _movementChecker.Previous = player.CurrentPosition;
+
+            _movementChecker.SetPrev(player.CurrentPosition);
             player.CurrentPosition = position;
             player.CurrentSpeed = speed;
             player.Direction = direction;

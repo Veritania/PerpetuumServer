@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Perpetuum.Builders;
+using Perpetuum.ExportedTypes;
 using Perpetuum.Groups.Corporations;
 using Perpetuum.IO;
 using Perpetuum.Log;
@@ -122,6 +124,48 @@ namespace Perpetuum.Zones
             }
 
             return null;
+        }
+
+
+        public static bool CheckLinearPath(this IZone zone, Point start, Point end, double slope = 4.0)
+        {
+            var deltaX = Math.Abs(end.X - start.X);
+            var deltaY = Math.Abs(end.Y - start.Y);
+            var x = start.X;
+            var y = start.Y;
+            var travelDist = 1 + deltaX + deltaY;
+            var xIncrement = (end.X > start.X) ? 1 : -1;
+            var yIncrement = (end.Y > start.Y) ? 1 : -1;
+            var error = deltaX - deltaY;
+            deltaX *= 2;
+            deltaY *= 2;
+
+            var failCount = 0;
+            for (var i = 0; i < travelDist; i++)
+            {
+                if (!zone.IsWalkable(x, y, slope))
+                {
+                    if (failCount > 0)
+                        return false;
+                    failCount++;
+                }
+                else
+                {
+                    failCount = 0;
+                }
+
+                if (error > 0)
+                {
+                    x += xIncrement;
+                    error -= deltaY;
+                }
+                else
+                {
+                    y += yIncrement;
+                    error += deltaX;
+                }
+            }
+            return true;
         }
 
         [CanBeNull]

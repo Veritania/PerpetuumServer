@@ -22,6 +22,8 @@ namespace Perpetuum.Zones
         void ResetLogoutTimer();
         void SendTerrainData();
 
+        void SetLastPosition(Position last);
+
         void SendBeamIfVisible(Beam beam);
         void SendBeam(IBuilder<Beam> builder);
         void SendBeam(Beam beam);

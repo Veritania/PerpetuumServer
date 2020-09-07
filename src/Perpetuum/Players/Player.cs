@@ -168,6 +168,10 @@ namespace Perpetuum.Players
         public Character Character { get; set; } = Character.None;
         public bool HasGMStealth { get; set; }
 
+        public override void OnPositionUpdated(Position last) {
+            Session.SetLastPosition(last);
+        }
+
         public void SetSession(IZoneSession session)
         {
             Session = session;
