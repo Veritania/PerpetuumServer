@@ -342,7 +342,7 @@ namespace Perpetuum.Zones
                 {
                     return true;
                 }
-                if (_aStar.HasPath(prev.ToPoint(), pos.ToPoint(), (int)MAX_DIST))
+                else if (_aStar.HasPath(prev.ToPoint(), pos.ToPoint()))
                 {
                     return true;
                 }
@@ -369,8 +369,7 @@ namespace Perpetuum.Zones
             if (!player.IsWalkable(position))
                 throw new PerpetuumException(ErrorCodes.InvalidMovement);
 
-            var valid = _movementChecker.IsUpdateValid(position);
-            if (!valid)
+            if (!_movementChecker.IsUpdateValid(position))
             {
                 player.CurrentPosition = _movementChecker.GetPrev();
                 throw new PerpetuumException(ErrorCodes.InvalidMovement);

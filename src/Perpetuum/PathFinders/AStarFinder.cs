@@ -9,12 +9,14 @@ namespace Perpetuum.PathFinders
     public class AStarLimited : AStarFinder
     {
         private readonly int MAX_PQ_SIZE;
+        private readonly int MAX_DEPTH;
         public AStarLimited(Heuristic heuristic, PathFinderNodePassableHandler passableHandler, int max) : base(heuristic, passableHandler)
         {
             MAX_PQ_SIZE = max * max + 1;
+            MAX_DEPTH = max;
         }
 
-        public bool HasPath(Point start, Point end, int maxDepth)
+        public bool HasPath(Point start, Point end)
         {
             if (!_passableHandler(end.X, end.Y))
                 return false;
@@ -34,7 +36,7 @@ namespace Perpetuum.PathFinders
                 if (node.Location == end)
                     return true;
 
-                if (node.depth > maxDepth)
+                if (node.depth > MAX_DEPTH)
                     return false;
 
                 foreach (var neighbor in GetNeighbors(node))
