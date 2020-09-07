@@ -127,13 +127,13 @@ namespace Perpetuum.Zones
 
         public static bool CheckLinearPath(this IZone zone, Point start, Point end, double slope = 4.0)
         {
-            var deltaX = Math.Abs(end.X - start.X);
-            var deltaY = Math.Abs(end.Y - start.Y);
             var x = start.X;
             var y = start.Y;
+            var deltaX = Math.Abs(end.X - x);
+            var deltaY = Math.Abs(end.Y - y);
             var travelDist = 1 + deltaX + deltaY;
-            var xIncrement = (end.X > start.X) ? 1 : -1;
-            var yIncrement = (end.Y > start.Y) ? 1 : -1;
+            var xIncrement = (end.X > x) ? 1 : -1;
+            var yIncrement = (end.Y > y) ? 1 : -1;
             var error = deltaX - deltaY;
             deltaX *= 2;
             deltaY *= 2;
