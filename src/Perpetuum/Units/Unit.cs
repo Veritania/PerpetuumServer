@@ -266,6 +266,7 @@ namespace Perpetuum.Units
             set
             {
                 var lastPosition = _currentPosition;
+
                 OnPositionUpdated(lastPosition);
 
                 _currentPosition = Zone.FixZ(value);
