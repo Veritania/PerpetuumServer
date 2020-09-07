@@ -131,7 +131,7 @@ namespace Perpetuum.Zones
             var y = start.Y;
             var deltaX = Math.Abs(end.X - x);
             var deltaY = Math.Abs(end.Y - y);
-            var travelDist = 1 + deltaX + deltaY;
+            var travelDist = deltaX + deltaY + 1;
             var xIncrement = (end.X > x) ? 1 : -1;
             var yIncrement = (end.Y > y) ? 1 : -1;
             var error = deltaX - deltaY;
