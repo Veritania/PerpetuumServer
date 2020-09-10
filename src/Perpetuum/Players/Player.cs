@@ -105,9 +105,8 @@ namespace Perpetuum.Players
                 py = ny;
                 //_player.Zone.CreateAlignedDebugBeam(BeamType.blue_20sec, new Position(px, py));
             }
-
-            _player.CurrentPosition = new Position(px,py);
-            //_player.Zone.CreateAlignedDebugBeam(BeamType.orange_20sec, _player.CurrentPosition);
+            _player.HandleMove(new Position(px, py));
+            //_player.Zone.CreateAlignedDebugBeam(BeamType.orange_20sec, new Position(px, py));
         }
     }
 
@@ -174,20 +173,19 @@ namespace Perpetuum.Players
             _moveChecker.SetPrev(last);
         }
 
-        public void HandleMove(Position position, float speed, float direction)
+        public bool HandleMove(Position position)
         {
             if (!IsWalkable(position))
-                throw new PerpetuumException(ErrorCodes.InvalidMovement);
+                return false;
 
             if (!_moveChecker.IsUpdateValid(position))
             {
                 CurrentPosition = _moveChecker.GetPrev();
-                throw new PerpetuumException(ErrorCodes.InvalidMovement);
+                return false;
             }
 
             CurrentPosition = position;
-            CurrentSpeed = speed;
-            Direction = direction;
+            return true;
         }
 
         public void SetSession(IZoneSession session)
