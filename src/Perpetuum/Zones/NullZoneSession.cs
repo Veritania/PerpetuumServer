@@ -34,7 +34,5 @@ namespace Perpetuum.Zones
         }
 
         public void Stop() { }
-
-        public void SetLastPosition(Position last) { }
     }
 }

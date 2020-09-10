@@ -18,6 +18,7 @@ namespace Perpetuum.Players
             lock (_lock)
                 _prev = prev;
         }
+
         private readonly Player _player;
         private readonly AStarLimited _aStar;
         private const int MAX_DIST = 10;
@@ -26,7 +27,6 @@ namespace Perpetuum.Players
         {
             _player = player;
             _aStar = new AStarLimited(Heuristic.Manhattan, _player.IsWalkable, MAX_DIST);
-            SetPrev(player.CurrentPosition);
         }
 
         public bool IsUpdateValid(Position pos)

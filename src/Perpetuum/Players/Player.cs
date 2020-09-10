@@ -137,6 +137,7 @@ namespace Perpetuum.Players
         private readonly IBlobEmitter _blobEmitter;
         private readonly BlobHandler<Player> _blobHandler;
         private readonly PlayerMovement _movement;
+        private readonly PlayerMoveChecker _moveChecker;
         private readonly IZoneEffectHandler _zoneEffectHandler;
         private CombatLogger _combatLogger;
 
@@ -158,6 +159,7 @@ namespace Perpetuum.Players
             _zoneEffectHandler = zoneEffectHandler;
             Session = ZoneSession.None;
             _movement = new PlayerMovement(this);
+            _moveChecker = new PlayerMoveChecker(this);
 
             _blobEmitter = new BlobEmitter(this);
             _blobHandler = new BlobHandler<Player>(this);
@@ -169,7 +171,23 @@ namespace Perpetuum.Players
         public bool HasGMStealth { get; set; }
 
         public override void OnPositionUpdated(Position last) {
-            Session.SetLastPosition(last);
+            _moveChecker.SetPrev(last);
+        }
+
+        public void HandleMove(Position position, float speed, float direction)
+        {
+            if (!IsWalkable(position))
+                throw new PerpetuumException(ErrorCodes.InvalidMovement);
+
+            if (!_moveChecker.IsUpdateValid(position))
+            {
+                CurrentPosition = _moveChecker.GetPrev();
+                throw new PerpetuumException(ErrorCodes.InvalidMovement);
+            }
+
+            CurrentPosition = position;
+            CurrentSpeed = speed;
+            Direction = direction;
         }
 
         public void SetSession(IZoneSession session)
@@ -241,6 +259,8 @@ namespace Perpetuum.Players
         protected override void OnEnterZone(IZone zone, ZoneEnterType enterType)
         {
             base.OnEnterZone(zone, enterType); //aa
+
+            OnPositionUpdated(CurrentPosition);
 
             zone.SendPacketToGang(Gang, new GangUpdatePacketBuilder(Visibility.Visible, this));
             
@@ -1043,7 +1063,7 @@ namespace Perpetuum.Players
                     zone.SetGang(player);
 
                     player.AddToZone(zone,validPosition,zoneEnterType);
-                    
+
                     player.ApplyInvulnerableEffect();
                     player.ApplyZoneEffects(zone);
                 });

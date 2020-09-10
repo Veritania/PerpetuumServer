@@ -47,7 +47,6 @@ namespace Perpetuum.Zones
         private Player _player;
         public DateTime DisconnectTime { get; private set; }
         private DateTime _lastReceivedPacketTime;
-        private PlayerMoveChecker _movementChecker;
 
         public int Id { get; set; }
 
@@ -283,7 +282,6 @@ namespace Perpetuum.Zones
             player.ApplyInvulnerableEffect();
 
             _player = player;
-            _movementChecker = new PlayerMoveChecker(_player);
         }
 
         private void OnWeatherUpdated(Packet weatherUpdatePacket)
@@ -299,11 +297,6 @@ namespace Perpetuum.Zones
             return new TerrainUpdateNotifier(_zone,player,layerTypes);
         }
 
-        public void SetLastPosition(Position last)
-        {
-            _movementChecker.SetPrev(last);
-        }
-
         private void HandleClientUpdate(Packet packet)
         {
             var player = _player;
@@ -315,19 +308,7 @@ namespace Perpetuum.Zones
             var speed = (float)packet.ReadByte() / 255;
             var direction = (float)packet.ReadByte() / 255;
 
-            if (!player.IsWalkable(position))
-                throw new PerpetuumException(ErrorCodes.InvalidMovement);
-
-            if (!_movementChecker.IsUpdateValid(position))
-            {
-                player.CurrentPosition = _movementChecker.GetPrev();
-                throw new PerpetuumException(ErrorCodes.InvalidMovement);
-            }
-
-            _movementChecker.SetPrev(player.CurrentPosition);
-            player.CurrentPosition = position;
-            player.CurrentSpeed = speed;
-            player.Direction = direction;
+            player.HandleMove(position, speed, direction);
         }
 
         private void HandleMoveForward(Packet packet)
