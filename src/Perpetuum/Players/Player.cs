@@ -1061,7 +1061,6 @@ namespace Perpetuum.Players
                     zone.SetGang(player);
 
                     player.AddToZone(zone,validPosition,zoneEnterType);
-
                     player.ApplyInvulnerableEffect();
                     player.ApplyZoneEffects(zone);
                 });

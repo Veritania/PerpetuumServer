@@ -125,7 +125,7 @@ namespace Perpetuum.Zones
         }
 
         /// <summary>
-        /// A 2d raycast check for a line segment in 2d world
+        /// A 2d raycast check for a line segment in cellular world
         /// An implementation of Bresenham's line algorithm
         /// </summary>
         /// <param name="zone">this</param>
@@ -139,14 +139,14 @@ namespace Perpetuum.Zones
             var y = start.Y;
             var deltaX = Math.Abs(end.X - x);
             var deltaY = Math.Abs(end.Y - y);
-            var travelDist = deltaX + deltaY + 1;
+            var travelDist = deltaX + deltaY;
             var xIncrement = (end.X > x) ? 1 : -1;
             var yIncrement = (end.Y > y) ? 1 : -1;
             var error = deltaX - deltaY;
             deltaX *= 2;
             deltaY *= 2;
 
-            for (var i = 0; i < travelDist; i++)
+            for (var i = 0; i <= travelDist; i++)
             {
                 if (!zone.IsWalkable(x, y, slope))
                 {
