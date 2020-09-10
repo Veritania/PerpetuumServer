@@ -124,7 +124,15 @@ namespace Perpetuum.Zones
             return null;
         }
 
-
+        /// <summary>
+        /// A 2d raycast check for a line segment in 2d world
+        /// An implementation of Bresenham's line algorithm
+        /// </summary>
+        /// <param name="zone">this</param>
+        /// <param name="start">Start point of line segment</param>
+        /// <param name="end">End point of line segment</param>
+        /// <param name="slope">Slope capability check for slope-based blocking</param>
+        /// <returns>True if tiles checked are walkable</returns>
         public static bool CheckLinearPath(this IZone zone, Point start, Point end, double slope = 4.0)
         {
             var x = start.X;

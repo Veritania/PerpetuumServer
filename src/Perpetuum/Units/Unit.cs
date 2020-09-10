@@ -1036,8 +1036,6 @@ namespace Perpetuum.Units
             }
         }
 
-        public double SpeedMax { get { return _speedMax.Value; } }
-
         public TimeSpan CoreRechargeTime => TimeSpan.FromSeconds(_coreRechargeTime.Value);
 
         private void InitUnitProperties()

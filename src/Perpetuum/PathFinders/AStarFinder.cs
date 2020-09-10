@@ -6,6 +6,9 @@ using Perpetuum.Collections;
 
 namespace Perpetuum.PathFinders
 {
+    /// <summary>
+    /// An AStar PathFinder with cheaper path-existance check with max path-depth
+    /// </summary>
     public class AStarLimited : AStarFinder
     {
         private readonly int MAX_PQ_SIZE;
@@ -16,6 +19,12 @@ namespace Perpetuum.PathFinders
             MAX_DEPTH = max;
         }
 
+        /// <summary>
+        /// Checks only for if a path exists between two points and is less than the MAX_DEPTH
+        /// </summary>
+        /// <param name="start">Start point</param>
+        /// <param name="end">End point</param>
+        /// <returns>True if path is found and shorter than MAX_DEPTH</returns>
         public bool HasPath(Point start, Point end)
         {
             if (!_passableHandler(end.X, end.Y))
