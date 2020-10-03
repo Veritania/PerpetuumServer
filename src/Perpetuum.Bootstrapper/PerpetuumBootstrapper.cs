@@ -535,6 +535,8 @@ namespace Perpetuum.Bootstrapper
                 return configuration;
             }).SingleInstance();
 
+            _builder.RegisterType<GameAdminCommands>().SingleInstance();
+
             _builder.RegisterType<Gang>();
             _builder.RegisterType<GangRepository>().As<IGangRepository>();
             _builder.RegisterType<GangManager>().As<IGangManager>().SingleInstance();

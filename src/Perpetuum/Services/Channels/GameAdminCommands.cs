@@ -1,10 +1,7 @@
 ﻿using Perpetuum.Accounting.Characters;
 using Perpetuum.Groups.Corporations;
-using Perpetuum.ExportedTypes;
 using Perpetuum.GenXY;
 using Perpetuum.Host.Requests;
-using Perpetuum.Players;
-using Perpetuum.Services.Mail;
 using Perpetuum.Services.RiftSystem;
 using Perpetuum.Services.Sessions;
 using Perpetuum.Zones;
@@ -15,38 +12,71 @@ using Perpetuum.Zones.Terrains.Materials.Plants;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace Perpetuum.Services.Channels
 {
     public class GameAdminCommands
     {
-        public GameAdminCommands()
-        {
+        //TODO circular dependency between 2 singleinstance services...
+        public IChannelManager ChannelManager { get; set; }
 
+        private readonly GlobalConfiguration _config;
+        private readonly ISessionManager _sessionManager;
+        public GameAdminCommands(GlobalConfiguration configuration, ISessionManager sessionManager)
+        {
+            _config = configuration;
+            _sessionManager = sessionManager;
         }
 
-        // obviously everything coming in from the in-game chat is a string.
-        // we have to take that string and chop it up, work out what command is being executed
-        // then parse/cast/convert arguments as necessary.
-        public void ParseAdminCommand(Character sender, string text, IRequest request, Channel channel, ISessionManager sessionManager, ChannelManager channelmanager)
+        public void TryParseAdminCommand(Character sender, string text, IRequest request, Channel channel)
         {
+            if (IsAdminCommand(sender, text))
+            {
+                ParseAdminCommand(sender, text, request, channel);
+            }
+        }
+
+        private bool IsAdminCommand(Character sender, string message)
+        {
+            return message.Substring(0, 1) == "#" && sender.AccessLevel == AccessLevel.admin;
+        }
+
+        private void ParseAdminCommand(Character sender, string text, IRequest request, Channel channel)
+        {
+            if (!IsAdminCommand(sender, text))
+                return;
+
             string[] command = text.Split(new char[] { ',' });
 
             // channel is not secured. must be secured first.
             if (channel.Type != ChannelType.Admin)
             {
-
                 if (command[0] == "#secure")
                 {
                     channel.SetAdmin(true);
-                    channel.SendMessageToAll(sessionManager, sender, "Channel Secured.");
+                    channel.SendMessageToAll(_sessionManager, sender, "Channel Secured.");
                     return;
                 }
-
-                channel.SendMessageToAll(sessionManager, sender, "Channel must be secured before sending commands.");
+                channel.SendMessageToAll(_sessionManager, sender, "Channel must be secured before sending commands.");
                 return;
+            }
+
+            ServerCommands(sender, command, request, channel);
+
+            if (_config.EnableDev)
+            {
+                DevServerCommands(sender, command, request, channel);
+            }
+        }
+
+        //TODO all of this needs a major refactor
+        private void ServerCommands(Character sender, string[] command, IRequest request, Channel channel)
+        {
+            if (command[0] == "#unsecure")
+            {
+                channel.SetAdmin(false);
+                channel.SendMessageToAll(_sessionManager, sender, "Channel is now public.");
             }
 
             if (command[0] == "#shutdown")
@@ -110,11 +140,11 @@ namespace Perpetuum.Services.Channels
                 }
 
                 // get the target character's session.
-                var charactersession = sessionManager.GetByCharacter(characterID);
+                var charactersession = _sessionManager.GetByCharacter(characterID);
 
                 if (charactersession.Character.ZoneId == null)
                 {
-                    channel.SendMessageToAll(sessionManager, sender, string.Format("ERR: Character with ID {0} does not have a zone. Are they docked?", characterID));
+                    channel.SendMessageToAll(_sessionManager, sender, string.Format("ERR: Character with ID {0} does not have a zone. Are they docked?", characterID));
                     return;
                 }
 
@@ -123,7 +153,7 @@ namespace Perpetuum.Services.Channels
 
                 if (charactersession.Character.ZoneId == null)
                 {
-                    channel.SendMessageToAll(sessionManager, sender, string.Format("ERR: Invalid Zone ID {0}", zoneID));
+                    channel.SendMessageToAll(_sessionManager, sender, string.Format("ERR: Invalid Zone ID {0}", zoneID));
                     return;
                 }
 
@@ -141,9 +171,288 @@ namespace Perpetuum.Services.Channels
                 tp.DoTeleportAsync(player);
                 tp = null;
 
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Moved Character {0}-{1} to Zone {2} @ {3},{4}", characterID, charactersession.Character.Nick, zone.Id, x, y));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Moved Character {0}-{1} to Zone {2} @ {3},{4}", characterID, charactersession.Character.Nick, zone.Id, x, y));
             }
-#if DEBUG  
+
+            if (command[0] == "#giveitem")
+            {
+
+                int.TryParse(command[1], out int definition);
+                int.TryParse(command[2], out int qty);
+
+                Dictionary<string, object> dictionary = new Dictionary<string, object>()
+                {
+                    { "definition", definition },
+                    { "quantity", qty }
+                };
+
+
+                string cmd = string.Format("createItem:relay:{0}", GenxyConverter.Serialize(dictionary));
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Gave Item {0} ", definition));
+            }
+
+            if (command[0] == "#getlockedtileproperties")
+            {
+
+                var character = request.Session.Character;
+                var zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
+                var player = zone.GetPlayer(character.ActiveRobotEid);
+
+                var lockedtile = player.GetPrimaryLock();
+
+                TerrainControlInfo ti = zone.Terrain.Controls.GetValue((lockedtile as TerrainLock).Location);
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Tile at {0},{1} has the following flags..", (lockedtile as TerrainLock).Location.X, (lockedtile as TerrainLock).Location.Y));
+                channel.SendMessageToAll(_sessionManager, sender, "TerrainControlFlags:");
+                foreach (TerrainControlFlags f in Enum.GetValues(typeof(TerrainControlFlags)))
+                {
+                    if (ti.Flags.HasFlag(f) && f != TerrainControlFlags.Undefined)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, string.Format("{0}", f.ToString()));
+                    }
+                }
+
+                BlockingInfo bi = zone.Terrain.Blocks.GetValue((lockedtile as TerrainLock).Location);
+
+                channel.SendMessageToAll(_sessionManager, sender, "BlockingFlags:");
+                foreach (BlockingFlags f in Enum.GetValues(typeof(BlockingFlags)))
+                {
+                    if (bi.Flags.HasFlag(f) && f != BlockingFlags.Undefined)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, string.Format("{0}", f.ToString()));
+                    }
+                }
+
+                PlantInfo pi = zone.Terrain.Plants.GetValue((lockedtile as TerrainLock).Location);
+
+                channel.SendMessageToAll(_sessionManager, sender, "PlantType:");
+                foreach (PlantType f in Enum.GetValues(typeof(PlantType)))
+                {
+                    if (pi.type.HasFlag(f) && f != PlantType.NotDefined)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, string.Format("{0}", f.ToString()));
+                    }
+                }
+
+                channel.SendMessageToAll(_sessionManager, sender, "GroundType:");
+                foreach (GroundType f in Enum.GetValues(typeof(GroundType)))
+                {
+                    if (pi.groundType.HasFlag(f))
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, string.Format("{0}", f.ToString()));
+                    }
+                }
+
+            }
+
+            if (command[0] == "#setvisibility")
+            {
+
+                bool.TryParse(command[1], out bool visiblestate);
+
+                var character = request.Session.Character;
+                var zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
+                var player = zone.GetPlayer(character.ActiveRobotEid);
+
+                player.HasGMStealth = !visiblestate;
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Player {0} visibility is {1}", player.Character.Nick, visiblestate));
+            }
+
+            if (command[0] == "#zonedrawstatmap")
+            {
+
+                Dictionary<string, object> dictionary = new Dictionary<string, object>()
+                {
+                    { "type", command[1] }
+                };
+
+                string cmd = string.Format("zoneDrawStatMap:zone_{0}:{1}", sender.ZoneId, GenxyConverter.Serialize(dictionary));
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+            }
+
+            if (command[0] == "#listplayersinzone")
+            {
+
+                int.TryParse(command[1], out int zoneid);
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Players On Zone {0}", zoneid));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("  AccountId    CharacterId    Nick    Access Level    Docked?    DockedAt    Position"));
+                foreach (Character c in _sessionManager.SelectedCharacters.Where(x => x.ZoneId == zoneid))
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, string.Format("   {0}       {1}        {2}        {3}       {4}       {5}      {6}",
+                        c.AccountId, c.Id, c.Nick, c.AccessLevel, c.IsDocked, c.GetCurrentDockingBase().Eid, c.GetPlayerRobotFromZone().CurrentPosition));
+                }
+            }
+
+            if (command[0] == "#countofplayers")
+            {
+                foreach (IZone z in request.Session.ZoneMgr.Zones)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, string.Format("Players On Zone {0}: {1}", z.Id, z.Players.ToList().Count));
+                }
+            }
+
+            if (command[0] == "#addtochannel")
+            {
+                int.TryParse(command[1], out int characterid);
+
+                var c = _sessionManager.GetByCharacter(characterid);
+
+                ChannelManager.JoinChannel(channel.Name, c.Character, ChannelMemberRole.Operator, string.Empty);
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Added character {0} to channel ", c.Character.Nick));
+
+            }
+
+            if (command[0] == "#removefromchannel")
+            {
+                int.TryParse(command[1], out int characterid);
+
+                var c = _sessionManager.GetByCharacter(characterid);
+
+                ChannelManager.LeaveChannel(channel.Name, c.Character);
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Removed character {0} from channel ", c.Character.Nick));
+
+            }
+
+            if (command[0] == "#listrifts")
+            {
+                foreach (IZone z in request.Session.ZoneMgr.Zones)
+                {
+                    var rift = z.Units.OfType<Rift>();
+                    foreach (Rift r in rift)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, string.Format("Rift - Zone: {0}, Position: ({1})", r.Zone, r.CurrentPosition));
+                    }
+                }
+            }
+
+            if (command[0] == "#flagplayernameoffensive")
+            {
+                bool err = false;
+                err = !int.TryParse(command[1], out int characterID);
+                err = !bool.TryParse(command[2], out bool isoffensive);
+
+                var charactersession = _sessionManager.GetByCharacter(characterID);
+                charactersession.Character.IsOffensiveNick = isoffensive;
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Player with nick {0} is offensive:{1}", charactersession.Character.Nick, charactersession.Character.IsOffensiveNick));
+
+            }
+
+            if (command[0] == "#renamecorp")
+            {
+                string currentCorpName = command[1];
+                string desiredCorpName = command[2];
+                string desiredCorpNick = command[3];
+
+                Corporation.IsNameOrNickTaken(desiredCorpName, desiredCorpNick).ThrowIfTrue(ErrorCodes.NameTaken);
+                var corp = Corporation.GetByName(currentCorpName);
+                corp.SetName(desiredCorpName, desiredCorpNick);
+
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Corp with nick {0} changed to: {1} [{2}]", currentCorpName, desiredCorpName, desiredCorpNick));
+            }
+
+            //FreeAllLockedEP for account - by request of player
+            if (command[0] == "#unlockallep")
+            {
+                bool err = false;
+                err = !int.TryParse(command[1], out int accountID);
+                if (err)
+                {
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+
+                Dictionary<string, object> dictionary = new Dictionary<string, object>()
+                {
+                    { k.accountID, accountID }
+                };
+
+                string cmd = string.Format("{0}:relay:{1}", Commands.ExtensionFreeAllLockedEpCommand.Text, GenxyConverter.Serialize(dictionary));
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+                channel.SendMessageToAll(_sessionManager, sender, "unlockallep: " + dictionary.ToDebugString());
+            }
+
+            //EPBonusCommands
+            if (command[0] == "#epbonusset")
+            {
+                bool err = false;
+                err = !int.TryParse(command[1], out int bonusBoost);
+                err = !int.TryParse(command[2], out int hours);
+                if (err)
+                {
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+
+                Dictionary<string, object> dictionary = new Dictionary<string, object>()
+                {
+                    { k.bonus, bonusBoost },
+                    { k.duration, hours }
+                };
+
+                string cmd = string.Format("{0}:relay:{1}", Commands.EPBonusSet.Text, GenxyConverter.Serialize(dictionary));
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+                channel.SendMessageToAll(_sessionManager, sender, "EP Bonus Set with command: " + dictionary.ToDebugString());
+            }
+
+            //List all Relics
+            if (command[0] == "#listrelics")
+            {
+                bool err = false;
+
+                var character = request.Session.Character;
+                IZone zone = null;
+
+                if (command.Length == 2)
+                {
+                    err = !int.TryParse(command[1], out int zoneCommand);
+                    if (err)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, "Bad args");
+                        throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                    }
+                    var zoneid = zoneCommand;
+                    zone = request.Session.ZoneMgr.GetZone((int)zoneid);
+                }
+                else if (character.ZoneId != null)
+                {
+                    zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
+                }
+
+                if (zone == null)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "Zone not provided or not found");
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+
+                Dictionary<string, object> dictionary = new Dictionary<string, object>()
+                {
+                    {"zoneid", zone.Id }
+                };
+                if (zone.RelicManager != null)
+                {
+                    var relicDictList = zone.RelicManager.GetRelicListDictionary();
+                    foreach (var dict in relicDictList)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, dict.ToDebugString());
+                    }
+                }
+                else
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "This zone does NOT support relics!");
+                }
+
+            }
+        }
+
+        //TODO refactor
+        private void DevServerCommands(Character sender, string[] command, IRequest request, Channel channel)
+        {
+
             if (command[0] == "#currentzonecleanobstacleblocking")
             {
                 string cmd = string.Format("zoneCleanObstacleBlocking:zone_{0}:null", sender.ZoneId);
@@ -380,7 +689,7 @@ namespace Perpetuum.Services.Channels
                     }
                 }
 
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Added Blocking To {0} Tiles.", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Added Blocking To {0} Tiles.", lockedtiles.Count));
             }
 
             if (command[0] == "#removeblockingfromtiles")
@@ -401,7 +710,7 @@ namespace Perpetuum.Services.Channels
                     }
                 }
 
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Removed Blocking From {0} Tiles.", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Removed Blocking From {0} Tiles.", lockedtiles.Count));
             }
 
             if (command[0] == "#zonedecorlock")
@@ -447,7 +756,7 @@ namespace Perpetuum.Services.Channels
                         }
                     }
                 }
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (Highway)", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (Highway)", lockedtiles.Count));
             }
 
             if (command[0] == "#zonetilesconcretea")
@@ -475,7 +784,7 @@ namespace Perpetuum.Services.Channels
                         }
                     }
                 }
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (ConcreteA)", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (ConcreteA)", lockedtiles.Count));
             }
 
             if (command[0] == "#zonetilesconcreteb")
@@ -504,7 +813,7 @@ namespace Perpetuum.Services.Channels
                         }
                     }
                 }
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (ConcreteB)", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (ConcreteB)", lockedtiles.Count));
             }
 
             if (command[0] == "#zonetilesroaming")
@@ -533,7 +842,7 @@ namespace Perpetuum.Services.Channels
                         }
                     }
                 }
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (Roaming)", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (Roaming)", lockedtiles.Count));
             }
 
             if (command[0] == "#zonetilesPBSTerraformProtected")
@@ -562,7 +871,78 @@ namespace Perpetuum.Services.Channels
                         }
                     }
                 }
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (PBSTerraformProtected)", lockedtiles.Count));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Altered state of control layer on {0} Tiles (PBSTerraformProtected)", lockedtiles.Count));
+            }
+
+            if (command[0] == "#savelayers")
+            {
+                bool err = false;
+                var dictionary = new Dictionary<string, object>();
+                if (command.Length == 2)
+                {
+                    err = !int.TryParse(command[1], out int zoneId);
+                    if (err)
+                    {
+                        channel.SendMessageToAll(_sessionManager, sender, "Bad args");
+                        throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                    }
+                    dictionary.Add(k.zoneID, zoneId);
+                }
+                var cmd = string.Format("{0}:relay:{1}", Commands.ZoneSaveLayer.Text, GenxyConverter.Serialize(dictionary));
+                channel.SendMessageToAll(_sessionManager, sender, $"SaveLayers command accepted: {dictionary.ToDebugString()} \r\nSaving... ");
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+                channel.SendMessageToAll(_sessionManager, sender, $"Layer(s) Saved! ");
+                return;
+            }
+
+            if (command[0] == "#zoneislandblock")
+            {
+                bool err = false;
+                var dictionary = new Dictionary<string, object>();
+                if (command.Length != 2)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "Missing or too many args");
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+
+                err = !int.TryParse(command[1], out int low);
+                if (err)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "Bad args");
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+                dictionary.Add(k.low, low);
+                var cmd = string.Format("{0}:zone_{1}:{2}", Commands.ZoneCreateIsland.Text, sender.ZoneId, GenxyConverter.Serialize(dictionary));
+                channel.SendMessageToAll(_sessionManager, sender, $"Islandblocking command accepted: {dictionary.ToDebugString()} \r\nBlocking... ");
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+                channel.SendMessageToAll(_sessionManager, sender, $"Zone water level blocked! ");
+                return;
+            }
+
+            if (command[0] == "#zonecreategarden")
+            {
+                bool err = false;
+                var dictionary = new Dictionary<string, object>();
+                if (command.Length != 3)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "Missing or too many args");
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+
+                err = !int.TryParse(command[1], out int x);
+                err = !int.TryParse(command[2], out int y);
+                if (err)
+                {
+                    channel.SendMessageToAll(_sessionManager, sender, "Bad args");
+                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
+                }
+                dictionary.Add(k.x, x);
+                dictionary.Add(k.y, y);
+                var cmd = string.Format("{0}:zone_{1}:{2}", Commands.ZoneCreateGarden.Text, sender.ZoneId, GenxyConverter.Serialize(dictionary));
+                channel.SendMessageToAll(_sessionManager, sender, $"Garden command accepted: {dictionary.ToDebugString()} \r\nPlanting... ");
+                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
+                channel.SendMessageToAll(_sessionManager, sender, $"Garden Created! ");
+                return;
             }
 
             //MissionTestResolve - DEBUG ONLY
@@ -587,248 +967,9 @@ namespace Perpetuum.Services.Channels
                 string cmd = string.Format("{0}:relay:{1}", Commands.MissionResolveTest.Text, GenxyConverter.Serialize(dictionary));
                 request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
 
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Running missionresolve test {0}", dictionary.ToDebugString()));
+                channel.SendMessageToAll(_sessionManager, sender, string.Format("Running missionresolve test {0}", dictionary.ToDebugString()));
             }
 
-#endif
-
-            if (command[0] == "#giveitem")
-            {
-
-                int.TryParse(command[1], out int definition);
-                int.TryParse(command[2], out int qty);
-
-                Dictionary<string, object> dictionary = new Dictionary<string, object>()
-                {
-                    { "definition", definition },
-                    { "quantity", qty }
-                };
-
-
-                string cmd = string.Format("createItem:relay:{0}", GenxyConverter.Serialize(dictionary));
-                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Gave Item {0} ", definition));
-            }
-
-
-            if (command[0] == "#getlockedtileproperties")
-            {
-
-                var character = request.Session.Character;
-                var zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
-                var player = zone.GetPlayer(character.ActiveRobotEid);
-
-                var lockedtile = player.GetPrimaryLock();
-
-                TerrainControlInfo ti = zone.Terrain.Controls.GetValue((lockedtile as TerrainLock).Location);
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Tile at {0},{1} has the following flags..", (lockedtile as TerrainLock).Location.X, (lockedtile as TerrainLock).Location.Y));
-                channel.SendMessageToAll(sessionManager, sender, "TerrainControlFlags:");
-                foreach (TerrainControlFlags f in Enum.GetValues(typeof(TerrainControlFlags)))
-                {
-                    if (ti.Flags.HasFlag(f) && f != TerrainControlFlags.Undefined)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, string.Format("{0}", f.ToString()));
-                    }
-                }
-
-                BlockingInfo bi = zone.Terrain.Blocks.GetValue((lockedtile as TerrainLock).Location);
-
-                channel.SendMessageToAll(sessionManager, sender, "BlockingFlags:");
-                foreach (BlockingFlags f in Enum.GetValues(typeof(BlockingFlags)))
-                {
-                    if (bi.Flags.HasFlag(f) && f != BlockingFlags.Undefined)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, string.Format("{0}", f.ToString()));
-                    }
-                }
-
-                PlantInfo pi = zone.Terrain.Plants.GetValue((lockedtile as TerrainLock).Location);
-
-                channel.SendMessageToAll(sessionManager, sender, "PlantType:");
-                foreach (PlantType f in Enum.GetValues(typeof(PlantType)))
-                {
-                    if (pi.type.HasFlag(f) && f != PlantType.NotDefined)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, string.Format("{0}", f.ToString()));
-                    }
-                }
-
-                channel.SendMessageToAll(sessionManager, sender, "GroundType:");
-                foreach (GroundType f in Enum.GetValues(typeof(GroundType)))
-                {
-                    if (pi.groundType.HasFlag(f))
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, string.Format("{0}", f.ToString()));
-                    }
-                }
-
-            }
-
-            if (command[0] == "#setvisibility")
-            {
-
-                bool.TryParse(command[1], out bool visiblestate);
-
-                var character = request.Session.Character;
-                var zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
-                var player = zone.GetPlayer(character.ActiveRobotEid);
-
-                player.HasGMStealth = !visiblestate;
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Player {0} visibility is {1}", player.Character.Nick, visiblestate));
-            }
-
-            if (command[0] == "#zonedrawstatmap")
-            {
-
-                Dictionary<string, object> dictionary = new Dictionary<string, object>()
-                {
-                    { "type", command[1] }
-                };
-
-                string cmd = string.Format("zoneDrawStatMap:zone_{0}:{1}", sender.ZoneId, GenxyConverter.Serialize(dictionary));
-                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
-            }
-
-
-            if (command[0] == "#listplayersinzone")
-            {
-
-                int.TryParse(command[1], out int zoneid);
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Players On Zone {0}", zoneid));
-                channel.SendMessageToAll(sessionManager, sender, string.Format("  AccountId    CharacterId    Nick    Access Level    Docked?    DockedAt    Position"));
-                foreach (Character c in sessionManager.SelectedCharacters.Where(x => x.ZoneId == zoneid))
-                {
-                    channel.SendMessageToAll(sessionManager, sender, string.Format("   {0}       {1}        {2}        {3}       {4}       {5}      {6}",
-                        c.AccountId, c.Id, c.Nick, c.AccessLevel, c.IsDocked, c.GetCurrentDockingBase().Eid, c.GetPlayerRobotFromZone().CurrentPosition));
-                }
-            }
-
-            if (command[0] == "#countofplayers")
-            {
-                foreach (IZone z in request.Session.ZoneMgr.Zones)
-                {
-                    channel.SendMessageToAll(sessionManager, sender, string.Format("Players On Zone {0}: {1}", z.Id, z.Players.ToList().Count));
-                }
-            }
-
-            if (command[0] == "#unsecure")
-            {
-                channel.SetAdmin(false);
-                channel.SendMessageToAll(sessionManager, sender, "Channel is now public.");
-            }
-
-            if (command[0] == "#addtochannel")
-            {
-                int.TryParse(command[1], out int characterid);
-
-                var c = sessionManager.GetByCharacter(characterid);
-
-                channelmanager.JoinChannel(channel.Name, c.Character, ChannelMemberRole.Operator, string.Empty);
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Added character {0} to channel ", c.Character.Nick));
-
-            }
-
-            if (command[0] == "#removefromchannel")
-            {
-                int.TryParse(command[1], out int characterid);
-
-                var c = sessionManager.GetByCharacter(characterid);
-
-                channelmanager.LeaveChannel(channel.Name, c.Character);
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Removed character {0} from channel ", c.Character.Nick));
-
-            }
-
-            if (command[0] == "#listrifts")
-            {
-                foreach (IZone z in request.Session.ZoneMgr.Zones)
-                {
-                    var rift = z.Units.OfType<Rift>();
-                    foreach (Rift r in rift)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, string.Format("Rift - Zone: {0}, Position: ({1})", r.Zone, r.CurrentPosition));
-                    }
-                }
-            }
-
-
-            if (command[0] == "#flagplayernameoffensive")
-            {
-                bool err = false;
-                err = !int.TryParse(command[1], out int characterID);
-                err = !bool.TryParse(command[2], out bool isoffensive);
-
-                var charactersession = sessionManager.GetByCharacter(characterID);
-                charactersession.Character.IsOffensiveNick = isoffensive;
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Player with nick {0} is offensive:{1}", charactersession.Character.Nick, charactersession.Character.IsOffensiveNick));
-
-            }
-
-            if (command[0] == "#renamecorp")
-            {
-                string currentCorpName = command[1];
-                string desiredCorpName = command[2];
-                string desiredCorpNick = command[3];
-
-                Corporation.IsNameOrNickTaken(desiredCorpName, desiredCorpNick).ThrowIfTrue(ErrorCodes.NameTaken);
-                var corp = Corporation.GetByName(currentCorpName);
-                corp.SetName(desiredCorpName, desiredCorpNick);
-
-                channel.SendMessageToAll(sessionManager, sender, string.Format("Corp with nick {0} changed to: {1} [{2}]", currentCorpName, desiredCorpName, desiredCorpNick));
-            }
-
-
-            //FreeAllLockedEP for account - by request of player
-            if (command[0] == "#unlockallep")
-            {
-                bool err = false;
-                err = !int.TryParse(command[1], out int accountID);
-                if (err)
-                {
-                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
-                }
-
-                Dictionary<string, object> dictionary = new Dictionary<string, object>()
-                {
-                    { k.accountID, accountID }
-                };
-
-                string cmd = string.Format("{0}:relay:{1}", Commands.ExtensionFreeAllLockedEpCommand.Text, GenxyConverter.Serialize(dictionary));
-                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
-                channel.SendMessageToAll(sessionManager, sender, "unlockallep: " + dictionary.ToDebugString());
-            }
-
-            //EPBonusCommands
-            if (command[0] == "#epbonusset")
-            {
-                bool err = false;
-                err = !int.TryParse(command[1], out int bonusBoost);
-                err = !int.TryParse(command[2], out int hours);
-                if (err)
-                {
-                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
-                }
-
-                Dictionary<string, object> dictionary = new Dictionary<string, object>()
-                {
-                    { k.bonus, bonusBoost },
-                    { k.duration, hours }
-                };
-
-                string cmd = string.Format("{0}:relay:{1}", Commands.EPBonusSet.Text, GenxyConverter.Serialize(dictionary));
-                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
-                channel.SendMessageToAll(sessionManager, sender, "EP Bonus Set with command: " + dictionary.ToDebugString());
-            }
-
-
-#if DEBUG
             //SpawnRelics by command
             if (command[0] == "#spawnrelic")
             {
@@ -846,7 +987,7 @@ namespace Perpetuum.Services.Channels
                 {
                     if (command.Length != 4)
                     {
-                        channel.SendMessageToAll(sessionManager, sender, "Bad args");
+                        channel.SendMessageToAll(_sessionManager, sender, "Bad args");
                         throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
                     }
                     err = !int.TryParse(command[1], out int xCommand);
@@ -854,7 +995,7 @@ namespace Perpetuum.Services.Channels
                     err = !int.TryParse(command[3], out int zoneCommand);
                     if (err)
                     {
-                        channel.SendMessageToAll(sessionManager, sender, "Bad args");
+                        channel.SendMessageToAll(_sessionManager, sender, "Bad args");
                         throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
                     }
                     x = xCommand;
@@ -863,7 +1004,7 @@ namespace Perpetuum.Services.Channels
                     zone = request.Session.ZoneMgr.GetZone((int)zoneid);
                     if (zone == null)
                     {
-                        channel.SendMessageToAll(sessionManager, sender, "Bad zone id!");
+                        channel.SendMessageToAll(_sessionManager, sender, "Bad zone id!");
                     }
                 }
                 else
@@ -884,88 +1025,17 @@ namespace Perpetuum.Services.Channels
                     bool success = zone.RelicManager.ForceSpawnRelicAt(x, y);
                     if (success)
                     {
-                        channel.SendMessageToAll(sessionManager, sender, "Spawned relic at: " + dictionary.ToDebugString());
+                        channel.SendMessageToAll(_sessionManager, sender, "Spawned relic at: " + dictionary.ToDebugString());
                     }
                     else
                     {
-                        channel.SendMessageToAll(sessionManager, sender, "FAILED to spawn relic at: " + dictionary.ToDebugString());
+                        channel.SendMessageToAll(_sessionManager, sender, "FAILED to spawn relic at: " + dictionary.ToDebugString());
                     }
                 }
                 else
                 {
-                    channel.SendMessageToAll(sessionManager, sender, "This zone does NOT support relics!");
+                    channel.SendMessageToAll(_sessionManager, sender, "This zone does NOT support relics!");
                 }
-
-            }
-#endif
-
-            //List all Relics
-            if (command[0] == "#listrelics")
-            {
-                bool err = false;
-
-                var character = request.Session.Character;
-                IZone zone = null;
-
-                if (command.Length == 2)
-                {
-                    err = !int.TryParse(command[1], out int zoneCommand);
-                    if (err)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, "Bad args");
-                        throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
-                    }
-                    var zoneid = zoneCommand;
-                    zone = request.Session.ZoneMgr.GetZone((int)zoneid);
-                }
-                else if (character.ZoneId != null)
-                {
-                    zone = request.Session.ZoneMgr.GetZone((int)character.ZoneId);
-                }
-
-                if (zone == null)
-                {
-                    channel.SendMessageToAll(sessionManager, sender, "Zone not provided or not found");
-                    throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
-                }
-
-                Dictionary<string, object> dictionary = new Dictionary<string, object>()
-                {
-                    {"zoneid", zone.Id }
-                };
-                if (zone.RelicManager != null)
-                {
-                    var relicDictList = zone.RelicManager.GetRelicListDictionary();
-                    foreach (var dict in relicDictList)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, dict.ToDebugString());
-                    }
-                }
-                else
-                {
-                    channel.SendMessageToAll(sessionManager, sender, "This zone does NOT support relics!");
-                }
-
-            }
-
-            if (command[0] == "#savelayers")
-            {
-                bool err = false;
-                var dictionary = new Dictionary<string, object>();
-                if (command.Length == 2)
-                {
-                    err = !int.TryParse(command[1], out int zoneId);
-                    if (err)
-                    {
-                        channel.SendMessageToAll(sessionManager, sender, "Bad args");
-                        throw PerpetuumException.Create(ErrorCodes.RequiredArgumentIsNotSpecified);
-                    }
-                    dictionary.Add(k.zoneID, zoneId);
-                }
-                var cmd = string.Format("{0}:relay:{1}", Commands.ZoneSaveLayer.Text, GenxyConverter.Serialize(dictionary));
-                channel.SendMessageToAll(sessionManager, sender, $"SaveLayers command accepted: {dictionary.ToDebugString()} \r\nSaving... ");
-                request.Session.HandleLocalRequest(request.Session.CreateLocalRequest(cmd));
-                channel.SendMessageToAll(sessionManager, sender, $"Layer(s) Saved! ");
             }
         }
     }

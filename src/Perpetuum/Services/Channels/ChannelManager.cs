@@ -18,8 +18,9 @@ namespace Perpetuum.Services.Channels
         private readonly IChannelBanRepository _banRepository;
         private readonly ChannelLoggerFactory _channelLoggerFactory;
         private readonly ConcurrentDictionary<string, Channel> _channels = new ConcurrentDictionary<string, Channel>();
+        private readonly GameAdminCommands _adminCommand;
 
-        public ChannelManager(ISessionManager sessionManager,IChannelRepository channelRepository,IChannelMemberRepository memberRepository,IChannelBanRepository banRepository,ChannelLoggerFactory channelLoggerFactory)
+        public ChannelManager(ISessionManager sessionManager,IChannelRepository channelRepository,IChannelMemberRepository memberRepository,IChannelBanRepository banRepository,ChannelLoggerFactory channelLoggerFactory, GameAdminCommands adminCommand)
         {
             _sessionManager = sessionManager;
             _sessionManager.SessionAdded += OnSessionAdded;
@@ -28,6 +29,8 @@ namespace Perpetuum.Services.Channels
             _memberRepository = memberRepository;
             _banRepository = banRepository;
             _channelLoggerFactory = channelLoggerFactory;
+            _adminCommand = adminCommand;
+            _adminCommand.ChannelManager = this;
 
             foreach (var channel in channelRepository.GetAll())
             {
@@ -264,12 +267,8 @@ namespace Perpetuum.Services.Channels
 
             m.CanTalk.ThrowIfFalse(ErrorCodes.CharacterIsMuted);
             channel.SendMessageToAll(_sessionManager, sender, message);
-            // this is an admin or GM command.
-            if (message.Substring(0, 1) == "#" && sender.AccessLevel == AccessLevel.admin)
-            {
-                channel.AdminCommands.ParseAdminCommand(sender, message, request, channel, _sessionManager, this);
-            }
 
+            _adminCommand.TryParseAdminCommand(sender, message, request, channel);
         }
 
         public void Announcement(string channelName, Character sender, string message)
