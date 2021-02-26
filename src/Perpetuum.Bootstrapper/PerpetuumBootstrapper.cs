@@ -1014,6 +1014,7 @@ namespace Perpetuum.Bootstrapper
             RegisterUnit<TrainingKillSwitch>();
             RegisterUnit<Gate>();
             RegisterUnit<RandomRiftPortal>();
+            RegisterUnit<TargettedPortal>(); // OPP: Special rift spawned eventfully to transport player to location
             RegisterUnit<StrongholdExitRift>(); // OPP: Special rift for exiting strongholds
 
             RegisterEntity<Item>();
@@ -1326,6 +1327,7 @@ namespace Perpetuum.Bootstrapper
                 ByName<ItemShop>(DefinitionNames.BASE_ITEM_SHOP);
                 ByName<Gift>(DefinitionNames.ANNIVERSARY_PACKAGE);
                 ByName<StrongholdExitRift>(DefinitionNames.STRONGHOLD_EXIT_RIFT);
+                ByName<TargettedPortal>(DefinitionNames.TARGETTED_RIFT);
 
                 var c = b.Build();
 
@@ -1708,6 +1710,7 @@ namespace Perpetuum.Bootstrapper
             _builder.RegisterType<ChatEcho>();
             _builder.RegisterType<NpcChatEcho>();
             _builder.RegisterType<AffectOutpostStability>();
+            _builder.RegisterType<PortalSpawner>();
             _builder.RegisterType<OreNpcSpawner>().As<NpcSpawnEventHandler<OreNpcSpawnMessage>>();
             _builder.RegisterType<NpcReinforcementSpawner>().As<NpcSpawnEventHandler<NpcReinforcementsMessage>>();
             _builder.RegisterType<EventListenerService>().SingleInstance().OnActivated(e =>
@@ -1715,6 +1718,7 @@ namespace Perpetuum.Bootstrapper
                 e.Context.Resolve<IProcessManager>().AddProcess(e.Instance.ToAsync().AsTimed(TimeSpan.FromSeconds(0.75)));
                 e.Instance.AttachListener(e.Context.Resolve<ChatEcho>());
                 e.Instance.AttachListener(e.Context.Resolve<NpcChatEcho>());
+                e.Instance.AttachListener(e.Context.Resolve<PortalSpawner>());
                 var obs = new GameTimeObserver(e.Instance);
                 obs.Subscribe(e.Context.Resolve<IGameTimeService>());
             });

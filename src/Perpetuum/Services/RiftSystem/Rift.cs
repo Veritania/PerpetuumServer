@@ -48,6 +48,33 @@ namespace Perpetuum.Services.RiftSystem
         }
     }
 
+    public class TargettedPortal : DespawningPortal
+    {
+        public IZone TargetZone { get; private set; }
+        public Position TargetPosition { get; private set; }
+        private readonly ITeleportStrategyFactories _teleportStrategyFactories;
+
+        public TargettedPortal(ITeleportStrategyFactories teleportStrategyFactories)
+        {
+            _teleportStrategyFactories = teleportStrategyFactories;
+        }
+
+        public void SetTarget(IZone zone, Position position)
+        {
+            TargetZone = zone;
+            TargetPosition = position;
+        }
+
+        public override void UseItem(Player player)
+        {
+            base.UseItem(player);
+
+            var teleport = _teleportStrategyFactories.TeleportToAnotherZoneFactory(TargetZone);
+            teleport.TargetPosition = TargetPosition;
+            teleport.DoTeleportAsync(player);
+        }
+    }
+
     /// <summary>
     /// RandomRift (used as the Rift Echo after a TAP)
     /// </summary>

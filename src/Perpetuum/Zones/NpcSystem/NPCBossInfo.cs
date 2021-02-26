@@ -125,6 +125,7 @@ namespace Perpetuum.Zones.NpcSystem
         {
             CommunicateDeath(killer, channel);
             HandleBossOutpostDeath(npc, killer, channel);
+            SpawnPortal(npc, killer, channel);
             IsDead = true;
             channel.PublishMessage(new NpcReinforcementsMessage(npc, npc.Zone.Id));
         }
@@ -192,6 +193,15 @@ namespace Perpetuum.Zones.NpcSystem
                     .WithWinnerCorp(zone.ToPlayerOrGetOwnerPlayer(killer).CorporationEid);
                 channel.PublishMessage(builder.Build());
             }
+        }
+
+        private void SpawnPortal(Npc npc, Unit killer, EventListenerService channel)
+        {
+            var isRiftSpawner = true; //TODO config
+            if (!isRiftSpawner)
+                return;
+
+            channel.PublishMessage(new SpawnPortalMessage(npc.Zone.Id, npc.CurrentPosition, 8, new Position(888, 888)));
         }
 
         private static void SendMessage(Unit src, EventListenerService eventChannel, string msg)
