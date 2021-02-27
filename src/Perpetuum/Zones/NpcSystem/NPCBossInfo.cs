@@ -29,7 +29,22 @@ namespace Perpetuum.Zones.NpcSystem
             var overrideRelations = record.GetValue<bool>("overrideRelations");
             var deathMessage = record.GetValue<string>("customDeathMessage");
             var aggressMessage = record.GetValue<string>("customAggressMessage");
-            var info = new NpcBossInfo(id, flockid, respawnFactor, lootSplit, outpostEID, stabilityPts, overrideRelations, deathMessage, aggressMessage);
+            var riftTargetZoneId = record.GetValue<int?>("riftTargetZoneId");
+            var riftTargetX = record.GetValue<int?>("riftTargetX");
+            var riftTargetY = record.GetValue<int?>("riftTargetY");
+            var info = new NpcBossInfo(id,
+                flockid,
+                respawnFactor,
+                lootSplit,
+                outpostEID,
+                stabilityPts,
+                overrideRelations,
+                deathMessage,
+                aggressMessage,
+                riftTargetZoneId,
+                riftTargetX,
+                riftTargetY
+                );
 
             return info;
         }
@@ -37,7 +52,9 @@ namespace Perpetuum.Zones.NpcSystem
         public static NpcBossInfo GetBossInfoByFlockID(int flockid)
         {
             var bossInfos = Db.Query()
-                .CommandText(@"SELECT TOP 1 id, flockid, respawnNoiseFactor, lootSplitFlag, outpostEID, stabilityPts, overrideRelations, customDeathMessage, customAggressMessage
+                .CommandText(@"SELECT TOP 1 id, flockid, respawnNoiseFactor, lootSplitFlag, outpostEID,
+                    stabilityPts, overrideRelations, customDeathMessage, customAggressMessage,
+                    riftTargetZoneId, riftTargetX, riftTargetY
                     FROM dbo.npcbossinfo WHERE flockid=@flockid;")
                 .SetParameter("@flockid", flockid)
                 .Execute()
@@ -52,6 +69,9 @@ namespace Perpetuum.Zones.NpcSystem
         private readonly int? _stabilityPts;
         private readonly string _deathMsg;
         private readonly string _aggroMsg;
+        private readonly int? _riftTargetZoneId;
+        private readonly int? _riftTargetX;
+        private readonly int? _riftTargetY;
         private bool _speak;
 
         public int FlockId { get; }
@@ -59,11 +79,12 @@ namespace Perpetuum.Zones.NpcSystem
         private bool IsOutpostBoss { get { return _outpostEID != null; } }
         private int StabilityPoints { get { return _stabilityPts ?? 0; } }
         private bool OverrideRelations { get; }
+        private bool HasRiftToSpawn { get { return _riftTargetZoneId != null && _riftTargetX != null && _riftTargetY != null; } }
 
         public bool IsLootSplit { get; }
         public bool IsDead { get; private set; }
 
-        public NpcBossInfo(int id, int flockid, double? respawnNoiseFactor, bool lootSplit, long? outpostEID, int? stabilityPts, bool overrideRelations, string customDeathMsg, string customAggroMsg)
+        public NpcBossInfo(int id, int flockid, double? respawnNoiseFactor, bool lootSplit, long? outpostEID, int? stabilityPts, bool overrideRelations, string customDeathMsg, string customAggroMsg, int? riftTargetZoneId, int? riftTargetX, int? riftTargetY)
         {
             _id = id;
             FlockId = flockid;
@@ -74,6 +95,9 @@ namespace Perpetuum.Zones.NpcSystem
             OverrideRelations = overrideRelations;
             _deathMsg = customDeathMsg;
             _aggroMsg = customAggroMsg;
+            _riftTargetZoneId = riftTargetZoneId;
+            _riftTargetX = riftTargetX;
+            _riftTargetY = riftTargetY;
             _speak = true;
             IsDead = false;
         }
@@ -197,11 +221,11 @@ namespace Perpetuum.Zones.NpcSystem
 
         private void SpawnPortal(Npc npc, Unit killer, EventListenerService channel)
         {
-            var isRiftSpawner = true; //TODO config
-            if (!isRiftSpawner)
+            if (!HasRiftToSpawn)
                 return;
 
-            channel.PublishMessage(new SpawnPortalMessage(npc.Zone.Id, npc.CurrentPosition, 8, new Position(888, 888)));
+            channel.PublishMessage(new SpawnPortalMessage(
+                npc.Zone.Id, npc.CurrentPosition, _riftTargetZoneId ?? 0, new Position(_riftTargetX ?? 0, _riftTargetY ?? 0)));
         }
 
         private static void SendMessage(Unit src, EventListenerService eventChannel, string msg)
