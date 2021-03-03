@@ -32,7 +32,6 @@ namespace Perpetuum.Services.RiftSystem
                 var destinationGroupId = r.GetValue<int>("destinationGroupId");
                 var lifetimeSeconds = r.GetValue<int?>("lifespanSeconds") ?? 0;
                 var maxUses = r.GetValue<int?>("maxUses") ?? -1;
-                var onlyOne = r.GetValue<bool>("onlyOne");
 
                 var group = Db.Query().CommandText(
                     @"SELECT id, groupId, zoneId, x, y, weight FROM riftdestinations WHERE groupId=@groupId;")
@@ -53,7 +52,7 @@ namespace Perpetuum.Services.RiftSystem
                 {
                     collection.Add(destination, destination.Weight);
                 }
-                return new CustomRiftConfig(id, name, collection, maxUses, onlyOne, TimeSpan.FromSeconds(lifetimeSeconds));
+                return new CustomRiftConfig(id, name, collection, maxUses, TimeSpan.FromSeconds(lifetimeSeconds));
             });
         }
 
@@ -67,18 +66,16 @@ namespace Perpetuum.Services.RiftSystem
     {
         public int Id { get; private set; }
         public string Name { get; private set; }
-        public bool OnlyOne { get; private set; }
         public TimeSpan Lifespan { get; private set; }
         public int MaxUses { get; private set; }
         private readonly WeightedCollection<Destination> _destinations;
 
-        public CustomRiftConfig(int id, string name, WeightedCollection<Destination> destinations, int maxUses, bool oneOnly, TimeSpan lifespan)
+        public CustomRiftConfig(int id, string name, WeightedCollection<Destination> destinations, int maxUses, TimeSpan lifespan)
         {
             Id = id;
             Name = name;
             _destinations = destinations;
             MaxUses = maxUses;
-            OnlyOne = oneOnly;
             Lifespan = lifespan;
         }
 
