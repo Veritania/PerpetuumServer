@@ -4,6 +4,7 @@ using Perpetuum.Log;
 using Perpetuum.Services.EventServices.EventMessages;
 using Perpetuum.Services.RiftSystem;
 using Perpetuum.Zones;
+using Perpetuum.Zones.Terrains;
 using System;
 
 namespace Perpetuum.Services.EventServices.EventProcessors
@@ -19,22 +20,49 @@ namespace Perpetuum.Services.EventServices.EventProcessors
             _zoneManager = zoneManager;
         }
 
+        private bool IsValid(SpawnPortalMessage msg)
+        {
+            if (msg.RiftConfig == null || !_zoneManager.ContainsZone(msg.SourceZone))
+                return false;
+            if (!_zoneManager.GetZone(msg.SourceZone).IsWalkable(msg.SourcePosition))
+                return false;
+            return true;
+        }
+
+        private Destination TryGetValidDestination(CustomRiftConfig riftConfig)
+        {
+            var attempts = 100;
+            while (attempts > 0)
+            {
+                attempts--;
+                var dest = riftConfig.GetDestination();
+                if (dest != null && _zoneManager.ContainsZone(dest.ZoneId))
+                {
+                    return dest;
+                }
+            }
+            return null;
+        }
+
         public override void HandleMessage(EventMessage value)
         {
             if (value is SpawnPortalMessage msg)
             {
-                if(!_zoneManager.ContainsZone(msg.SourceZone) || !_zoneManager.ContainsZone(msg.TargetZone))
-                {
-                    Logger.DebugWarning($"{msg.SourceZone} or {msg.TargetZone} not a valid zone");
+                if (!msg.IsValid(_zoneManager))
                     return;
-                }
-                //TODO
+
                 var zone = _zoneManager.GetZone(msg.SourceZone);
-                var zoneTarget = _zoneManager.GetZone(msg.TargetZone);
+                var targetDestination = TryGetValidDestination(msg.RiftConfig);
+                if (targetDestination == null)
+                    return;
+
+                var zoneTarget = _zoneManager.GetZone(targetDestination.ZoneId);
+                var targetPos = targetDestination.GetPosition(zoneTarget);
                 var rift = (TargettedPortal)_entityServices.Factory.CreateWithRandomEID(DefinitionNames.TARGETTED_RIFT);
                 rift.AddToZone(zone, msg.SourcePosition, ZoneEnterType.NpcSpawn);
-                rift.SetTarget(zoneTarget, msg.TargetPosition);
-                rift.SetDespawnTime(TimeSpan.FromMinutes(2.5));
+                rift.SetTarget(zoneTarget, targetPos);
+                rift.SetConfig(msg.RiftConfig);
+
                 Logger.Info(string.Format("Rift spawned on zone {0} {1} ({2})", zone.Id, rift.ED.Name, rift.CurrentPosition));
             }
         }

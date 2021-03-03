@@ -334,6 +334,7 @@
     <Compile Include="Services\Relics\RelicZoneConfig.cs" />
     <Compile Include="Services\Relics\Relics\SAPRelic.cs" />
     <Compile Include="Services\Relics\RelicManagers\ZoneRelicManager.cs" />
+    <Compile Include="Services\RiftSystem\CustomRiftConfig.cs" />
     <Compile Include="Services\RiftSystem\IRiftManager.cs" />
     <Compile Include="Services\RiftSystem\StrongholdRifts\StrongholdExitLocations.cs" />
     <Compile Include="Services\RiftSystem\StrongholdRifts\StrongholdRiftManager.cs" />

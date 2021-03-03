@@ -1452,6 +1452,8 @@ namespace Perpetuum.Bootstrapper
 
         public void RegisterNpcs()
         {
+            _builder.RegisterType<CustomRiftConfigReader>().As<ICustomRiftConfigReader>();
+            _builder.RegisterType<NpcBossInfoBuilder>().SingleInstance();
             _builder.RegisterType<NpcReinforcementsRepository>().SingleInstance().As<INpcReinforcementsRepository>();
 
             _builder.RegisterType<FlockConfiguration>().As<IFlockConfiguration>();

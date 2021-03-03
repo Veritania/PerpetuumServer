@@ -52,11 +52,22 @@ namespace Perpetuum.Services.RiftSystem
     {
         public IZone TargetZone { get; private set; }
         public Position TargetPosition { get; private set; }
+        public CustomRiftConfig RiftConfig { get; private set; }
         private readonly ITeleportStrategyFactories _teleportStrategyFactories;
+        private int uses = 0;
 
         public TargettedPortal(ITeleportStrategyFactories teleportStrategyFactories)
         {
             _teleportStrategyFactories = teleportStrategyFactories;
+        }
+
+        public void SetConfig(CustomRiftConfig riftConfig)
+        {
+            RiftConfig = riftConfig;
+            if (RiftConfig.IsDespawning)
+            {
+                SetDespawnTime(RiftConfig.Lifespan);
+            }
         }
 
         public void SetTarget(IZone zone, Position position)
@@ -65,13 +76,31 @@ namespace Perpetuum.Services.RiftSystem
             TargetPosition = position;
         }
 
+        private bool IsUsageExceeded()
+        {
+            return !RiftConfig.InfiniteUses && RiftConfig.MaxUses < uses;
+        }
+
+        private void IncrementUsage()
+        {
+            if (!RiftConfig.InfiniteUses)
+                uses++;
+        }
+
         public override void UseItem(Player player)
         {
             base.UseItem(player);
 
+            IsUsageExceeded().ThrowIfTrue(ErrorCodes.MaximumAllowedRegistrationExceeded);
+
             var teleport = _teleportStrategyFactories.TeleportToAnotherZoneFactory(TargetZone);
             teleport.TargetPosition = TargetPosition;
             teleport.DoTeleportAsync(player);
+
+            IncrementUsage();
+
+            if (IsUsageExceeded())
+                Kill();
         }
     }
 
