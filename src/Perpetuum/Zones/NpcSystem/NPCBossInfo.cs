@@ -65,7 +65,6 @@ namespace Perpetuum.Zones.NpcSystem
     }
 
 
-
     /// <summary>
     /// Specifies the behavior of a Boss-type NPC with various settings
     /// </summary>

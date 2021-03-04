@@ -4,8 +4,6 @@ using Perpetuum.Log;
 using Perpetuum.Services.EventServices.EventMessages;
 using Perpetuum.Services.RiftSystem;
 using Perpetuum.Zones;
-using Perpetuum.Zones.Terrains;
-using System;
 
 namespace Perpetuum.Services.EventServices.EventProcessors
 {
@@ -20,7 +18,7 @@ namespace Perpetuum.Services.EventServices.EventProcessors
             _zoneManager = zoneManager;
         }
 
-        private bool IsValid(SpawnPortalMessage msg)
+        private bool ValidateMessage(SpawnPortalMessage msg)
         {
             if (msg.RiftConfig == null || !_zoneManager.ContainsZone(msg.SourceZone))
                 return false;
@@ -48,7 +46,7 @@ namespace Perpetuum.Services.EventServices.EventProcessors
         {
             if (value is SpawnPortalMessage msg)
             {
-                if (!msg.IsValid(_zoneManager))
+                if (!ValidateMessage(msg))
                     return;
 
                 var zone = _zoneManager.GetZone(msg.SourceZone);

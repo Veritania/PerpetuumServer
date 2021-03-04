@@ -1,5 +1,4 @@
 ﻿using Perpetuum.Services.RiftSystem;
-using Perpetuum.Zones;
 
 namespace Perpetuum.Services.EventServices.EventMessages
 {
@@ -13,15 +12,6 @@ namespace Perpetuum.Services.EventServices.EventMessages
             SourcePosition = srcPosition;
             SourceZone = sourceZone;
             RiftConfig = riftConfig;
-        }
-
-        public bool IsValid(IZoneManager zoneManager)
-        {
-            if (RiftConfig == null || !zoneManager.ContainsZone(SourceZone))
-                return false;
-            if (!zoneManager.GetZone(SourceZone).IsWalkable(SourcePosition))
-                return false;
-            return true;
         }
     }
 }
