@@ -288,6 +288,7 @@
     <Compile Include="Services\Channels\ChannelMessageHandler.cs" />
     <Compile Include="Services\Channels\ChatCommands\AdminCommandData.cs" />
     <Compile Include="Services\Channels\ChatCommands\AdminCommandHandlers.cs" />
+    <Compile Include="Services\Channels\ChatCommands\AdminCommands.cs" />
     <Compile Include="Services\Channels\ChatCommands\GameAdminCommands.cs" />
     <Compile Include="Services\Channels\PreMadeChatMessageNames.cs" />
     <Compile Include="Services\EventServices\EventMessages\NpcReinforcementsMessage.cs" />
